@@ -243,7 +243,7 @@
 
   // ถ้าเอาไฟล์นี้ไปโฮสต์ที่ลิงก์ของตัวเอง (เช่น GitHub Pages) ใส่ลิงก์ตรงนี้
   // เพื่อให้มีลิงก์ "เปิดในหน้าต่างใหม่" เมื่อการฝังในเว็บขอตำแหน่งไม่ได้
-  var STANDALONE_URL = 'https://marcivilizehotel-star.github.io/route1/route2/';
+  var STANDALONE_URL = 'https://marcivilizehotel-star.github.io/route/route2/';
 
   /* ===================== ตัวแปรสถานะ ===================== */
   var S = {
