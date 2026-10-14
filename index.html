@@ -119,6 +119,23 @@
   .mini:active { background: var(--line); }
   .mini.stop { color: #A33A1B; }
 
+  /* ---------- โหมดการเดินทาง ---------- */
+  .seg { display: flex; gap: 6px; margin: 0 0 12px; }
+  .seg button {
+    flex: 1; padding: 10px 6px; border-radius: 12px;
+    border: 1px solid var(--line); background: #fff; color: var(--ink);
+    font-family: inherit; font-weight: 600; font-size: 14px; cursor: pointer;
+    touch-action: manipulation;
+  }
+  .seg button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .pill {
+    margin-left: auto; flex: none;
+    border: 1px solid var(--line); background: #fff; color: var(--ink);
+    border-radius: 999px; padding: 6px 12px;
+    font-family: inherit; font-weight: 600; font-size: 13px; cursor: pointer;
+    touch-action: manipulation;
+  }
+
   /* ---------- Toast ---------- */
   #toast {
     position: absolute; z-index: 1100; left: 50%; top: 40%;
@@ -166,6 +183,10 @@
     <h1>ชิลๆ 2-3 ชั่วโมง</h1>
     <p class="sub">เดินตามเส้นทาง 3 จุด พร้อมนำทางในหน้านี้</p>
     <ol class="stops" id="stopList"></ol>
+    <div class="seg" role="group" aria-label="รูปแบบการเดินทาง">
+      <button type="button" id="modeDrive" aria-pressed="true">🚗 ขับรถ (ตามถนน)</button>
+      <button type="button" id="modeWalk" aria-pressed="false">🚶 เดิน</button>
+    </div>
     <div id="errBox" class="alert hidden" role="alert"></div>
     <button id="readyBtn" class="ready-btn" type="button">พร้อมแล้ว (Ready)</button>
   </section>
@@ -183,6 +204,7 @@
     <div class="panel-head">
       <span class="badge" id="tgtBadge">1</span>
       <span id="tgtName">—</span>
+      <button class="pill" id="modeBtn" type="button">🚗 ขับรถ</button>
     </div>
     <p id="tgtMeta"></p>
     <div class="actions">
@@ -209,21 +231,28 @@
   var ARRIVE_M   = 25;   // ระยะที่ถือว่า "ถึงแล้ว" (เมตร)
   var STEP_M     = 20;   // ระยะที่ถือว่าผ่านจุดเลี้ยวแล้ว (เมตร)
   var OFFROUTE_M = 50;   // ออกนอกเส้นทางเกินนี้ให้คำนวณใหม่ (เมตร)
-  var ROUTE_API  = 'https://routing.openstreetmap.de/routed-foot/route/v1/foot/';
-  var WALK_SPEED = 1.3;  // เมตร/วินาที ใช้ตอนคำนวณเวลาเองเมื่อ API ใช้ไม่ได้
+  // ขับรถ = เส้นทางตามถนนที่รถวิ่งได้จริง (เคารพถนนวันเวย์) / เดิน = รวมทางเท้าและทางลัด
+  var ROUTE_APIS = {
+    drive: 'https://routing.openstreetmap.de/routed-car/route/v1/driving/',
+    walk:  'https://routing.openstreetmap.de/routed-foot/route/v1/foot/'
+  };
+  var WALK_SPEED  = 1.3;  // เมตร/วินาที ใช้คำนวณเวลาเมื่อ API ใช้ไม่ได้ (เดิน)
+  var DRIVE_SPEED = 8;    // เมตร/วินาที (~30 กม./ชม.) ใช้คำนวณเวลาเมื่อ API ใช้ไม่ได้ (ขับรถ)
 
   // ถ้าเอาไฟล์นี้ไปโฮสต์ที่ลิงก์ของตัวเอง (เช่น GitHub Pages) ใส่ลิงก์ตรงนี้
   // เพื่อให้มีลิงก์ "เปิดในหน้าต่างใหม่" เมื่อการฝังในเว็บขอตำแหน่งไม่ได้
-  var STANDALONE_URL = 'https://marcivilizehotel-star.github.io/route/';
+  var STANDALONE_URL = 'https://marcivilizehotel-star.github.io/route1/';
 
   /* ===================== ตัวแปรสถานะ ===================== */
   var S = {
     nav: false, target: 0, pos: null, route: null, stepIdx: 1,
     watchId: null, lastFetch: 0, fetching: false, follow: true,
-    wake: null, routeLine: null, fetchSeq: 0
+    wake: null, routeLine: null, fetchSeq: 0, mode: 'drive'
   };
 
   var $ = function (id) { return document.getElementById(id); };
+  function speed() { return S.mode === 'drive' ? DRIVE_SPEED : WALK_SPEED; }
+  function stepRadius() { return S.mode === 'drive' ? 35 : STEP_M; }
 
   /* ===================== แผนที่ ===================== */
   var map = L.map('map', { zoomControl: false, attributionControl: true });
@@ -344,8 +373,12 @@
     };
     if (type === 'arrive') return { arrow: '⚑', text: 'ถึงจุดหมายแล้ว' };
     if (type === 'depart') return { arrow: '↑', text: 'เริ่มออกเดินทาง' + road };
+    if (type === 'exit roundabout' || type === 'exit rotary') {
+      return { arrow: '↱', text: 'ออกจากวงเวียน' + road };
+    }
     if (type === 'roundabout' || type === 'rotary' || type === 'roundabout turn') {
-      return { arrow: '⟳', text: 'เข้าวงเวียน' + road };
+      var ex = m.exit ? ' ใช้ทางออกที่ ' + m.exit : '';
+      return { arrow: '⟳', text: 'เข้าวงเวียน' + ex + road };
     }
     if (type === 'fork') {
       var f = mod.indexOf('left') >= 0 ? ['↖', 'ตรงทางแยก ชิดซ้าย'] : ['↗', 'ตรงทางแยก ชิดขวา'];
@@ -406,7 +439,7 @@
     var seq = ++S.fetchSeq;
     S.fetching = true; S.lastFetch = Date.now();
 
-    var url = ROUTE_API + S.pos.lng + ',' + S.pos.lat + ';' + tgt.lng + ',' + tgt.lat +
+    var url = ROUTE_APIS[S.mode] + S.pos.lng + ',' + S.pos.lat + ';' + tgt.lng + ',' + tgt.lat +
               '?overview=full&geometries=geojson&steps=true';
     var ctrl = new AbortController();
     var to = setTimeout(function () { ctrl.abort(); }, 9000);
@@ -426,7 +459,7 @@
         if (seq !== S.fetchSeq) return;
         // ใช้เส้นตรงแทนเมื่อบริการเส้นทางใช้ไม่ได้
         var d = haversine(S.pos, tgt);
-        S.route = { coords: [[S.pos.lat, S.pos.lng], [tgt.lat, tgt.lng]], dist: d, dur: d / WALK_SPEED, steps: null, fallback: true };
+        S.route = { coords: [[S.pos.lat, S.pos.lng], [tgt.lat, tgt.lng]], dist: d, dur: d / speed(), steps: null, fallback: true };
         drawRoute(S.route.coords, true);
       })
       .then(function () {
@@ -445,12 +478,12 @@
     // ถึงจุดหมายหรือยัง
     if (direct <= ARRIVE_M) { arrived(); return; }
 
-    var remaining = direct, eta = direct / WALK_SPEED;
+    var remaining = direct, eta = direct / speed();
     if (S.route) {
       var sn = snap(S.route.coords, S.pos);
       if (!S.route.fallback) {
         remaining = sn.remaining;
-        eta = S.route.dist > 0 ? S.route.dur * (sn.remaining / S.route.dist) : remaining / WALK_SPEED;
+        eta = S.route.dist > 0 ? S.route.dur * (sn.remaining / S.route.dist) : remaining / speed();
       }
       // ออกนอกเส้นทาง -> คำนวณใหม่
       if (!S.route.fallback && sn.off > OFFROUTE_M && !S.fetching && Date.now() - S.lastFetch > 15000) {
@@ -461,7 +494,7 @@
         var steps = S.route.steps;
         while (S.stepIdx < steps.length - 1) {
           var loc = steps[S.stepIdx].maneuver.location;
-          if (haversine(S.pos, { lat: loc[1], lng: loc[0] }) < STEP_M) S.stepIdx++; else break;
+          if (haversine(S.pos, { lat: loc[1], lng: loc[0] }) < stepRadius()) S.stepIdx++; else break;
         }
       }
     }
@@ -477,13 +510,13 @@
     } else if (S.route && S.route.fallback) {
       var brg = bearing(S.pos, tgt);
       arrow = '➤'; text = 'มุ่งหน้าไปทาง' + compassName(brg);
-      sub = 'เส้นทางถนนใช้ไม่ได้ชั่วคราว แสดงทิศทางตรงแทน';
+      sub = 'บริการเส้นทางใช้ไม่ได้ชั่วคราว แสดงทิศทางตรงแทน';
     }
     $('arrow').textContent = arrow;
     $('arrow').style.transform = (S.route && S.route.fallback) ? 'rotate(' + (bearing(S.pos, tgt) - 90) + 'deg)' : '';
     $('instrText').textContent = text;
     $('instrDist').textContent = sub;
-    $('tgtMeta').textContent = 'เหลือ ' + fmtDist(remaining) + ' · เดินประมาณ ' + fmtTime(eta);
+    $('tgtMeta').textContent = 'เหลือ ' + fmtDist(remaining) + ' · ' + (S.mode === 'drive' ? 'ขับรถ' : 'เดิน') + 'ประมาณ ' + fmtTime(eta);
 
     drawMe();
     if (S.follow) {
@@ -601,7 +634,26 @@
     setTimeout(fitAll, 50);
   }
 
+  /* ===================== โหมดการเดินทาง ===================== */
+  function setMode(mode) {
+    S.mode = mode;
+    $('modeDrive').setAttribute('aria-pressed', mode === 'drive');
+    $('modeWalk').setAttribute('aria-pressed', mode === 'walk');
+    $('modeBtn').textContent = mode === 'drive' ? '🚗 ขับรถ' : '🚶 เดิน';
+    if (S.nav) {
+      S.fetchSeq++; S.fetching = false;   // ยกเลิกคำขอเก่า
+      clearRoute();
+      S.stepIdx = 1;
+      S.lastFetch = 0;
+      fetchRoute();
+      toast(mode === 'drive' ? 'เปลี่ยนเป็นโหมดขับรถ' : 'เปลี่ยนเป็นโหมดเดิน', 1800);
+    }
+  }
+
   /* ===================== ปุ่ม ===================== */
+  $('modeDrive').addEventListener('click', function () { setMode('drive'); });
+  $('modeWalk').addEventListener('click', function () { setMode('walk'); });
+  $('modeBtn').addEventListener('click', function () { setMode(S.mode === 'drive' ? 'walk' : 'drive'); });
   $('readyBtn').addEventListener('click', startNav);
   $('stopBtn').addEventListener('click', function () { stopNav(false); });
   $('recenterBtn').addEventListener('click', function () {
