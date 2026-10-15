@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>สายดื่ม รองท้องแล้วพร้อม Hang-out</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+
+<style>
+  :root {
+    --green: #8FBF3F;
+    --green-deep: #4E7A12;
+    --ink: #1E2A12;
+    --ink-soft: #5B6650;
+    --paper: #FBFCF7;
+    --line: #DDE4D0;
+    --me: #2A6FDB;
+    --warn-bg: #FFF4E0;
+    --warn-ink: #7A4A00;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    margin: 0;
+    font-family: "IBM Plex Sans Thai", system-ui, -apple-system, "Noto Sans Thai", sans-serif;
+    color: var(--ink);
+    background: var(--paper);
+    -webkit-text-size-adjust: 100%;
+  }
+  #app { position: relative; height: 100%; min-height: 520px; overflow: hidden; }
+  #map { position: absolute; inset: 0; z-index: 0; }
+
+  /* ---------- Cards ---------- */
+  .card {
+    position: absolute;
+    left: 12px; right: 12px;
+    z-index: 1000;
+    background: var(--paper);
+    border-radius: 18px;
+    box-shadow: 0 6px 24px rgba(30, 42, 18, .22);
+    padding: 16px;
+  }
+  #intro { bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+  #intro h1 { margin: 0 0 2px; font-size: 20px; font-weight: 600; line-height: 1.3; }
+  #intro .sub { margin: 0 0 12px; font-size: 14px; color: var(--ink-soft); }
+
+  .stops { list-style: none; margin: 0 0 14px; padding: 0; }
+  .stops li {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 0; font-size: 15px;
+    border-top: 1px solid var(--line);
+  }
+  .stops li:first-child { border-top: 0; }
+  .badge {
+    flex: none; width: 26px; height: 26px; border-radius: 50%;
+    background: var(--green); color: var(--ink);
+    display: grid; place-items: center;
+    font-size: 13px; font-weight: 600;
+  }
+
+  /* ---------- Ready button ---------- */
+  .ready-btn {
+    width: 100%;
+    border: 0;
+    border-radius: 14px;
+    padding: 16px 20px;
+    background: #8FBF3F;
+    color: #1E2A12;
+    font-family: "IBM Plex Sans Thai", sans-serif;
+    font-weight: 600;            /* กึ่งหนา (SemiBold) */
+    font-size: 19px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .ready-btn:active { filter: brightness(.94); }
+  .ready-btn:disabled { opacity: .7; cursor: default; }
+  .ready-btn:focus-visible, .mini:focus-visible {
+    outline: 3px solid var(--ink); outline-offset: 2px;
+  }
+
+  .alert {
+    margin: 0 0 12px; padding: 10px 12px; border-radius: 10px;
+    background: var(--warn-bg); color: var(--warn-ink);
+    font-size: 14px; line-height: 1.5;
+  }
+  .alert a { color: inherit; font-weight: 600; }
+  .hidden { display: none !important; }
+
+  /* ---------- Navigation: top instruction ---------- */
+  #instr {
+    top: calc(12px + env(safe-area-inset-top, 0px));
+    display: flex; align-items: center; gap: 14px;
+    background: var(--ink); color: #fff;
+  }
+  #arrow {
+    flex: none; width: 52px; height: 52px; border-radius: 14px;
+    background: var(--green); color: var(--ink);
+    display: grid; place-items: center; font-size: 30px; font-weight: 600;
+  }
+  #instrText { font-size: 18px; font-weight: 600; line-height: 1.35; }
+  #instrDist { font-size: 14px; color: #C9D8B0; margin-top: 2px; }
+
+  /* ---------- Navigation: bottom panel ---------- */
+  #panel { bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+  .panel-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  #tgtName { font-size: 17px; font-weight: 600; line-height: 1.3; }
+  #tgtMeta { font-size: 14px; color: var(--ink-soft); margin: 0 0 12px 36px; }
+  .actions { display: flex; gap: 8px; }
+  .mini {
+    flex: 1; border: 1px solid var(--line); background: #fff; color: var(--ink);
+    border-radius: 12px; padding: 11px 6px;
+    font-family: inherit; font-weight: 600; font-size: 14px; cursor: pointer;
+    touch-action: manipulation;
+  }
+  .mini:active { background: var(--line); }
+  .mini.stop { color: #A33A1B; }
+
+  /* ---------- โหมดการเดินทาง ---------- */
+  .seg { display: flex; gap: 6px; margin: 0 0 12px; }
+  .seg button {
+    flex: 1; padding: 10px 6px; border-radius: 12px;
+    border: 1px solid var(--line); background: #fff; color: var(--ink);
+    font-family: inherit; font-weight: 600; font-size: 14px; cursor: pointer;
+    touch-action: manipulation;
+  }
+  .seg button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .pill {
+    margin-left: auto; flex: none;
+    border: 1px solid var(--line); background: #fff; color: var(--ink);
+    border-radius: 999px; padding: 6px 12px;
+    font-family: inherit; font-weight: 600; font-size: 13px; cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  /* ---------- Toast ---------- */
+  #toast {
+    position: absolute; z-index: 1100; left: 50%; top: 40%;
+    transform: translateX(-50%);
+    background: var(--ink); color: #fff;
+    padding: 12px 18px; border-radius: 12px;
+    font-size: 16px; font-weight: 600; text-align: center;
+    max-width: 86%; box-shadow: 0 6px 24px rgba(0,0,0,.3);
+  }
+
+  /* ---------- Map markers ---------- */
+  .pin {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: #fff; border: 3px solid var(--green);
+    color: var(--ink); font-weight: 600; font-size: 15px;
+    display: grid; place-items: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,.3);
+    font-family: "IBM Plex Sans Thai", sans-serif;
+  }
+  .pin.active { background: var(--green); transform: scale(1.18); }
+  .pin.done { background: #C9CFC0; border-color: #A3AA98; color: #fff; }
+  .me-dot {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--me); border: 3px solid #fff;
+    box-shadow: 0 0 0 0 rgba(42,111,219,.5), 0 2px 6px rgba(0,0,0,.4);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(42,111,219,.5), 0 2px 6px rgba(0,0,0,.4); }
+    70% { box-shadow: 0 0 0 16px rgba(42,111,219,0), 0 2px 6px rgba(0,0,0,.4); }
+    100% { box-shadow: 0 0 0 0 rgba(42,111,219,0), 0 2px 6px rgba(0,0,0,.4); }
+  }
+  @media (prefers-reduced-motion: reduce) { .me-dot { animation: none; } }
+
+  .leaflet-container { font-family: "IBM Plex Sans Thai", sans-serif; }
+</style>
+</head>
+
+<body>
+<div id="app">
+  <div id="map"></div>
+
+  <!-- หน้าเริ่มต้น -->
+  <section id="intro" class="card">
+    <h1>สายดื่ม รองท้องแล้วพร้อม Hang-out</h1>
+    <p class="sub">เส้นทาง 2 จุด พร้อมนำทางในหน้านี้</p>
+    <ol class="stops" id="stopList"></ol>
+    <div class="seg" role="group" aria-label="รูปแบบการเดินทาง">
+      <button type="button" id="modeDrive" aria-pressed="true">🚗 ขับรถ (ตามถนน)</button>
+      <button type="button" id="modeWalk" aria-pressed="false">🚶 เดิน</button>
+    </div>
+    <div id="errBox" class="alert hidden" role="alert"></div>
+    <button id="readyBtn" class="ready-btn" type="button">พร้อมแล้ว (Ready)</button>
+  </section>
+
+  <!-- ระหว่างนำทาง -->
+  <section id="instr" class="card hidden" aria-live="polite">
+    <div id="arrow">↑</div>
+    <div>
+      <div id="instrText">กำลังหาเส้นทาง…</div>
+      <div id="instrDist"></div>
+    </div>
+  </section>
+
+  <section id="panel" class="card hidden">
+    <div class="panel-head">
+      <span class="badge" id="tgtBadge">1</span>
+      <span id="tgtName">—</span>
+      <button class="pill" id="modeBtn" type="button">🚗 ขับรถ</button>
+    </div>
+    <p id="tgtMeta"></p>
+    <div class="actions">
+      <button class="mini" id="recenterBtn" type="button">ตำแหน่งฉัน</button>
+      <button class="mini" id="skipBtn" type="button">ข้ามไปจุดถัดไป</button>
+      <button class="mini stop" id="stopBtn" type="button">หยุดนำทาง</button>
+    </div>
+  </section>
+
+  <div id="toast" class="hidden" role="status"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* ===================== ตั้งค่า ===================== */
+  var POINTS = [
+    { name: 'ข้าวต้มโต๊ะแดง',                 lat: 17.416940269917333, lng: 102.7961064740081 },
+    { name: 'เจ่เจ้บาร์',                      lat: 17.411983359142393, lng: 102.80252006274867 }
+  ];
+  var ARRIVE_M   = 25;   // ระยะที่ถือว่า "ถึงแล้ว" (เมตร)
+  var STEP_M     = 20;   // ระยะที่ถือว่าผ่านจุดเลี้ยวแล้ว (เมตร)
+  var OFFROUTE_M = 50;   // ออกนอกเส้นทางเกินนี้ให้คำนวณใหม่ (เมตร)
+  // ขับรถ = เส้นทางตามถนนที่รถวิ่งได้จริง (เคารพถนนวันเวย์) / เดิน = รวมทางเท้าและทางลัด
+  var ROUTE_APIS = {
+    drive: 'https://routing.openstreetmap.de/routed-car/route/v1/driving/',
+    walk:  'https://routing.openstreetmap.de/routed-foot/route/v1/foot/'
+  };
+  var WALK_SPEED  = 1.3;  // เมตร/วินาที ใช้คำนวณเวลาเมื่อ API ใช้ไม่ได้ (เดิน)
+  var DRIVE_SPEED = 8;    // เมตร/วินาที (~30 กม./ชม.) ใช้คำนวณเวลาเมื่อ API ใช้ไม่ได้ (ขับรถ)
+
+  // ถ้าเอาไฟล์นี้ไปโฮสต์ที่ลิงก์ของตัวเอง (เช่น GitHub Pages) ใส่ลิงก์ตรงนี้
+  // เพื่อให้มีลิงก์ "เปิดในหน้าต่างใหม่" เมื่อการฝังในเว็บขอตำแหน่งไม่ได้
+  var STANDALONE_URL = 'https://marcivilizehotel-star.github.io/route/route5/';
+
+  /* ===================== ตัวแปรสถานะ ===================== */
+  var S = {
+    nav: false, target: 0, pos: null, route: null, stepIdx: 1,
+    watchId: null, lastFetch: 0, fetching: false, follow: true,
+    wake: null, routeLine: null, fetchSeq: 0, mode: 'drive'
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  function speed() { return S.mode === 'drive' ? DRIVE_SPEED : WALK_SPEED; }
+  function stepRadius() { return S.mode === 'drive' ? 35 : STEP_M; }
+
+  /* ===================== แผนที่ ===================== */
+  var map = L.map('map', { zoomControl: false, attributionControl: true });
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+  }).addTo(map);
+  map.attributionControl.setPrefix(false);
+
+  var bounds = L.latLngBounds(POINTS.map(function (p) { return [p.lat, p.lng]; }));
+  function fitAll() {
+    var introH = $('intro').classList.contains('hidden') ? 0 : $('intro').offsetHeight + 24;
+    map.fitBounds(bounds, {
+      paddingTopLeft: [30, 30],
+      paddingBottomRight: [30, introH + 20],
+      maxZoom: 18
+    });
+  }
+
+  var markers = POINTS.map(function (p, i) {
+    return L.marker([p.lat, p.lng], {
+      icon: L.divIcon({
+        className: '',
+        html: '<div class="pin">' + (i + 1) + '</div>',
+        iconSize: [34, 34], iconAnchor: [17, 17]
+      }),
+      title: p.name
+    }).addTo(map).bindTooltip(p.name, { direction: 'top', offset: [0, -18] });
+  });
+
+  function paintPins() {
+    markers.forEach(function (m, i) {
+      var el = m.getElement() && m.getElement().firstChild;
+      if (!el) return;
+      el.className = 'pin' + (S.nav && i < S.target ? ' done' : '') + (S.nav && i === S.target ? ' active' : '');
+    });
+  }
+
+  var meMarker = null, meCircle = null;
+  function drawMe() {
+    var ll = [S.pos.lat, S.pos.lng];
+    if (!meMarker) {
+      meCircle = L.circle(ll, { radius: S.pos.acc, color: '#2A6FDB', weight: 1, fillOpacity: .1 }).addTo(map);
+      meMarker = L.marker(ll, {
+        icon: L.divIcon({ className: '', html: '<div class="me-dot"></div>', iconSize: [20, 20], iconAnchor: [10, 10] }),
+        zIndexOffset: 1000, interactive: false
+      }).addTo(map);
+    } else {
+      meMarker.setLatLng(ll);
+      meCircle.setLatLng(ll).setRadius(S.pos.acc);
+    }
+  }
+
+  map.on('dragstart', function () { S.follow = false; });
+
+  /* ===================== ตัวช่วยคำนวณ ===================== */
+  function haversine(a, b) {
+    var R = 6371000, k = Math.PI / 180;
+    var dLat = (b.lat - a.lat) * k, dLng = (b.lng - a.lng) * k;
+    var x = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(a.lat * k) * Math.cos(b.lat * k) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return 2 * R * Math.asin(Math.sqrt(x));
+  }
+  function proj(lat, lng, lat0, lng0) {
+    var k = Math.PI / 180;
+    return [(lng - lng0) * Math.cos(lat0 * k) * 111320, (lat - lat0) * 110540];
+  }
+  // หาจุดบนเส้นทางที่ใกล้ผู้ใช้ที่สุด -> ระยะห่างจากเส้น + ระยะที่เหลือตามเส้น
+  function snap(coords, p) {
+    if (!coords || coords.length < 2) return { off: 0, remaining: 0 };
+    var pts = coords.map(function (c) { return proj(c[0], c[1], p.lat, p.lng); });
+    var best = Infinity, bi = 0, bt = 0;
+    for (var i = 0; i < pts.length - 1; i++) {
+      var ax = pts[i][0], ay = pts[i][1], dx = pts[i + 1][0] - ax, dy = pts[i + 1][1] - ay;
+      var l2 = dx * dx + dy * dy;
+      var t = l2 ? ((-ax) * dx + (-ay) * dy) / l2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      var d = Math.hypot(ax + t * dx, ay + t * dy);
+      if (d < best) { best = d; bi = i; bt = t; }
+    }
+    var rem = Math.hypot(pts[bi + 1][0] - pts[bi][0], pts[bi + 1][1] - pts[bi][1]) * (1 - bt);
+    for (var j = bi + 1; j < pts.length - 1; j++) {
+      rem += Math.hypot(pts[j + 1][0] - pts[j][0], pts[j + 1][1] - pts[j][1]);
+    }
+    return { off: best, remaining: rem };
+  }
+  function bearing(a, b) {
+    var k = Math.PI / 180;
+    var y = Math.sin((b.lng - a.lng) * k) * Math.cos(b.lat * k);
+    var x = Math.cos(a.lat * k) * Math.sin(b.lat * k) -
+            Math.sin(a.lat * k) * Math.cos(b.lat * k) * Math.cos((b.lng - a.lng) * k);
+    return (Math.atan2(y, x) / k + 360) % 360;
+  }
+  var COMPASS = ['เหนือ', 'ตะวันออกเฉียงเหนือ', 'ตะวันออก', 'ตะวันออกเฉียงใต้',
+                 'ใต้', 'ตะวันตกเฉียงใต้', 'ตะวันตก', 'ตะวันตกเฉียงเหนือ'];
+  function compassName(deg) { return COMPASS[Math.round(deg / 45) % 8]; }
+  function fmtDist(m) {
+    m = Math.max(0, m);
+    return m < 1000 ? Math.round(m / 5) * 5 + ' ม.' : (m / 1000).toFixed(1) + ' กม.';
+  }
+  function fmtTime(sec) {
+    var min = Math.max(1, Math.round(sec / 60));
+    return min < 60 ? min + ' นาที' : Math.floor(min / 60) + ' ชม. ' + (min % 60) + ' นาที';
+  }
+
+  // แปลงคำสั่งเลี้ยวของ OSRM เป็นภาษาไทย
+  function stepInfo(step) {
+    var m = step.maneuver || {}, type = m.type, mod = m.modifier || '', road = step.name ? ' เข้า' + step.name : '';
+    var turns = {
+      'left':         ['↰', 'เลี้ยวซ้าย'],
+      'right':        ['↱', 'เลี้ยวขวา'],
+      'slight left':  ['↖', 'เฉียงไปทางซ้าย'],
+      'slight right': ['↗', 'เฉียงไปทางขวา'],
+      'sharp left':   ['↰', 'เลี้ยวซ้ายหักศอก'],
+      'sharp right':  ['↱', 'เลี้ยวขวาหักศอก'],
+      'uturn':        ['↩', 'กลับรถ'],
+      'straight':     ['↑', 'เดินตรงต่อไป']
+    };
+    if (type === 'arrive') return { arrow: '⚑', text: 'ถึงจุดหมายแล้ว' };
+    if (type === 'depart') return { arrow: '↑', text: 'เริ่มออกเดินทาง' + road };
+    if (type === 'exit roundabout' || type === 'exit rotary') {
+      return { arrow: '↱', text: 'ออกจากวงเวียน' + road };
+    }
+    if (type === 'roundabout' || type === 'rotary' || type === 'roundabout turn') {
+      var ex = m.exit ? ' ใช้ทางออกที่ ' + m.exit : '';
+      return { arrow: '⟳', text: 'เข้าวงเวียน' + ex + road };
+    }
+    if (type === 'fork') {
+      var f = mod.indexOf('left') >= 0 ? ['↖', 'ตรงทางแยก ชิดซ้าย'] : ['↗', 'ตรงทางแยก ชิดขวา'];
+      return { arrow: f[0], text: f[1] + road };
+    }
+    var t = turns[mod] || turns['straight'];
+    return { arrow: t[0], text: t[1] + road };
+  }
+
+  /* ===================== UI ===================== */
+  function toast(msg, ms) {
+    var t = $('toast');
+    t.textContent = msg; t.classList.remove('hidden');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { t.classList.add('hidden'); }, ms || 2600);
+  }
+  function showError(msg) {
+    var box = $('errBox');
+    var link = STANDALONE_URL
+      ? ' <a href="' + STANDALONE_URL + '" target="_blank" rel="noopener">เปิดในหน้าต่างใหม่</a>'
+      : '';
+    box.innerHTML = msg + link;
+    box.classList.remove('hidden');
+  }
+  function setReadyLoading(on) {
+    var b = $('readyBtn');
+    b.disabled = on;
+    b.textContent = on ? 'กำลังหาตำแหน่งของคุณ…' : 'พร้อมแล้ว (Ready)';
+  }
+
+  $('stopList').innerHTML = POINTS.map(function (p, i) {
+    return '<li><span class="badge">' + (i + 1) + '</span><span>' + p.name + '</span></li>';
+  }).join('');
+
+  function renderTarget() {
+    var p = POINTS[S.target];
+    $('tgtBadge').textContent = S.target + 1;
+    $('tgtName').textContent = p.name;
+    paintPins();
+  }
+
+  /* ===================== เส้นทาง ===================== */
+  function clearRoute() {
+    if (S.routeLine) { map.removeLayer(S.routeLine); S.routeLine = null; }
+    S.route = null;
+  }
+  function drawRoute(coords, dashed) {
+    if (S.routeLine) map.removeLayer(S.routeLine);
+    S.routeLine = L.polyline(coords, {
+      color: '#2A6FDB', weight: 6, opacity: .85,
+      dashArray: dashed ? '2 10' : null, lineCap: 'round'
+    }).addTo(map);
+  }
+
+  function fetchRoute() {
+    if (!S.pos || S.fetching) return;
+    var tgt = POINTS[S.target];
+    var seq = ++S.fetchSeq;
+    S.fetching = true; S.lastFetch = Date.now();
+
+    var url = ROUTE_APIS[S.mode] + S.pos.lng + ',' + S.pos.lat + ';' + tgt.lng + ',' + tgt.lat +
+              '?overview=full&geometries=geojson&steps=true';
+    var ctrl = new AbortController();
+    var to = setTimeout(function () { ctrl.abort(); }, 9000);
+
+    fetch(url, { signal: ctrl.signal })
+      .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+      .then(function (j) {
+        if (seq !== S.fetchSeq) return;
+        if (!j.routes || !j.routes.length) throw new Error('no route');
+        var r = j.routes[0];
+        var coords = r.geometry.coordinates.map(function (c) { return [c[1], c[0]]; });
+        S.route = { coords: coords, dist: r.distance, dur: r.duration, steps: r.legs[0].steps, fallback: false };
+        S.stepIdx = S.route.steps.length > 1 ? 1 : 0;
+        drawRoute(coords, false);
+      })
+      .catch(function () {
+        if (seq !== S.fetchSeq) return;
+        // ใช้เส้นตรงแทนเมื่อบริการเส้นทางใช้ไม่ได้
+        var d = haversine(S.pos, tgt);
+        S.route = { coords: [[S.pos.lat, S.pos.lng], [tgt.lat, tgt.lng]], dist: d, dur: d / speed(), steps: null, fallback: true };
+        drawRoute(S.route.coords, true);
+      })
+      .then(function () {
+        clearTimeout(to);
+        S.fetching = false;
+        if (seq === S.fetchSeq && S.nav) refresh();
+      });
+  }
+
+  /* ===================== อัปเดตระหว่างนำทาง ===================== */
+  function refresh() {
+    if (!S.nav || !S.pos) return;
+    var tgt = POINTS[S.target];
+    var direct = haversine(S.pos, tgt);
+
+    // ถึงจุดหมายหรือยัง
+    if (direct <= ARRIVE_M) { arrived(); return; }
+
+    var remaining = direct, eta = direct / speed();
+    if (S.route) {
+      var sn = snap(S.route.coords, S.pos);
+      if (!S.route.fallback) {
+        remaining = sn.remaining;
+        eta = S.route.dist > 0 ? S.route.dur * (sn.remaining / S.route.dist) : remaining / speed();
+      }
+      // ออกนอกเส้นทาง -> คำนวณใหม่
+      if (!S.route.fallback && sn.off > OFFROUTE_M && !S.fetching && Date.now() - S.lastFetch > 15000) {
+        fetchRoute();
+      }
+      // ขยับไปคำสั่งเลี้ยวถัดไป
+      if (S.route.steps) {
+        var steps = S.route.steps;
+        while (S.stepIdx < steps.length - 1) {
+          var loc = steps[S.stepIdx].maneuver.location;
+          if (haversine(S.pos, { lat: loc[1], lng: loc[0] }) < stepRadius()) S.stepIdx++; else break;
+        }
+      }
+    }
+
+    // ข้อความคำสั่ง
+    var arrow = '↑', text = 'กำลังหาเส้นทาง…', sub = '';
+    if (S.route && S.route.steps) {
+      var st = S.route.steps[S.stepIdx];
+      var info = stepInfo(st);
+      var loc2 = st.maneuver.location;
+      arrow = info.arrow; text = info.text;
+      sub = 'ในอีก ' + fmtDist(haversine(S.pos, { lat: loc2[1], lng: loc2[0] }));
+    } else if (S.route && S.route.fallback) {
+      var brg = bearing(S.pos, tgt);
+      arrow = '➤'; text = 'มุ่งหน้าไปทาง' + compassName(brg);
+      sub = 'บริการเส้นทางใช้ไม่ได้ชั่วคราว แสดงทิศทางตรงแทน';
+    }
+    $('arrow').textContent = arrow;
+    $('arrow').style.transform = (S.route && S.route.fallback) ? 'rotate(' + (bearing(S.pos, tgt) - 90) + 'deg)' : '';
+    $('instrText').textContent = text;
+    $('instrDist').textContent = sub;
+    $('tgtMeta').textContent = 'เหลือ ' + fmtDist(remaining) + ' · ' + (S.mode === 'drive' ? 'ขับรถ' : 'เดิน') + 'ประมาณ ' + fmtTime(eta);
+
+    drawMe();
+    if (S.follow) {
+      if (map.getZoom() < 16) map.setView([S.pos.lat, S.pos.lng], 17, { animate: true });
+      else map.panTo([S.pos.lat, S.pos.lng], { animate: true });
+    }
+  }
+
+  function arrived() {
+    var last = S.target >= POINTS.length - 1;
+    if (last) {
+      toast('ครบทุกจุดแล้ว 🎉', 4000);
+      stopNav(true);
+      return;
+    }
+    toast('ถึง ' + POINTS[S.target].name + ' แล้ว', 3000);
+    S.target++;
+    clearRoute();
+    renderTarget();
+    S.stepIdx = 1;
+    S.lastFetch = 0;
+    fetchRoute();
+  }
+  /* ===================== ตำแหน่ง GPS ===================== */
+  function onPos(p) {
+    S.pos = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy || 20 };
+    drawMe();
+    if (!S.nav) { beginNav(); } else { refresh(); }
+  }
+  function onErr(e) {
+    var msg;
+    if (e && e.code === 1) {
+      msg = 'ยังไม่ได้รับอนุญาตให้ใช้ตำแหน่ง กรุณากดอนุญาตเมื่อเบราว์เซอร์ถาม หรือเปิดสิทธิ์ตำแหน่งในการตั้งค่าเครื่อง แล้วกดปุ่มอีกครั้ง.';
+    } else if (e && e.code === 3) {
+      msg = 'หาตำแหน่งไม่ทันเวลา ลองออกไปที่โล่งหรือเปิด GPS แล้วกดปุ่มอีกครั้ง.';
+    } else {
+      msg = 'หาตำแหน่งของคุณไม่ได้ ตรวจสอบว่าเปิด GPS แล้ว.';
+    }
+    if (!S.nav) {
+      stopWatch();
+      setReadyLoading(false);
+      showError(msg);
+    } else {
+      toast('สัญญาณ GPS ขาดหาย', 2500);
+    }
+  }
+  function stopWatch() {
+    if (S.watchId !== null) { navigator.geolocation.clearWatch(S.watchId); S.watchId = null; }
+  }
+
+  function requestWake() {
+    try {
+      if (navigator.wakeLock) {
+        navigator.wakeLock.request('screen').then(function (l) { S.wake = l; }).catch(function () {});
+      }
+    } catch (e) {}
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible' && S.nav) requestWake();
+  });
+
+  /* ===================== เริ่ม / หยุด ===================== */
+  function startNav() {
+    $('errBox').classList.add('hidden');
+    // ถ้าถูกฝังอยู่ในเว็บอื่น (เช่น Google Sites) เบราว์เซอร์มักบล็อกการขอตำแหน่ง
+    // จึงเปิดหน้านี้ในแท็บใหม่แทน (ต้องใส่ STANDALONE_URL ด้านบน)
+    var inFrame = false;
+    try { inFrame = window.self !== window.top; } catch (e) { inFrame = true; }
+    if (inFrame && STANDALONE_URL) {
+      window.open(STANDALONE_URL, '_blank', 'noopener');
+      return;
+    }
+    if (!('geolocation' in navigator)) {
+      showError('เบราว์เซอร์นี้ไม่รองรับการหาตำแหน่ง.');
+      return;
+    }
+    if (window.isSecureContext === false) {
+      showError('หน้านี้ต้องเปิดผ่าน https จึงจะขอตำแหน่งได้.');
+      return;
+    }
+    setReadyLoading(true);
+    S.watchId = navigator.geolocation.watchPosition(onPos, onErr, {
+      enableHighAccuracy: true, maximumAge: 2000, timeout: 20000
+    });
+  }
+
+  function beginNav() {
+    S.nav = true; S.target = 0; S.follow = true;
+    $('intro').classList.add('hidden');
+    $('instr').classList.remove('hidden');
+    $('panel').classList.remove('hidden');
+    setReadyLoading(false);
+    renderTarget();
+    requestWake();
+    clearRoute();
+    S.lastFetch = 0;
+    fetchRoute();
+    map.setView([S.pos.lat, S.pos.lng], 17, { animate: false });
+  }
+
+  function stopNav(finished) {
+    S.nav = false;
+    S.fetchSeq++;            // ยกเลิกคำขอเส้นทางที่ค้างอยู่
+    S.fetching = false;
+    stopWatch();
+    clearRoute();
+    if (S.wake) { try { S.wake.release(); } catch (e) {} S.wake = null; }
+    $('instr').classList.add('hidden');
+    $('panel').classList.add('hidden');
+    $('intro').classList.remove('hidden');
+    $('readyBtn').textContent = finished ? 'เริ่มใหม่อีกครั้ง (Ready)' : 'พร้อมแล้ว (Ready)';
+    S.target = 0;
+    paintPins();
+    if (meMarker) { map.removeLayer(meMarker); map.removeLayer(meCircle); meMarker = meCircle = null; }
+    setTimeout(fitAll, 50);
+  }
+
+  /* ===================== โหมดการเดินทาง ===================== */
+  function setMode(mode) {
+    S.mode = mode;
+    $('modeDrive').setAttribute('aria-pressed', mode === 'drive');
+    $('modeWalk').setAttribute('aria-pressed', mode === 'walk');
+    $('modeBtn').textContent = mode === 'drive' ? '🚗 ขับรถ' : '🚶 เดิน';
+    if (S.nav) {
+      S.fetchSeq++; S.fetching = false;   // ยกเลิกคำขอเก่า
+      clearRoute();
+      S.stepIdx = 1;
+      S.lastFetch = 0;
+      fetchRoute();
+      toast(mode === 'drive' ? 'เปลี่ยนเป็นโหมดขับรถ' : 'เปลี่ยนเป็นโหมดเดิน', 1800);
+    }
+  }
+
+  /* ===================== ปุ่ม ===================== */
+  $('modeDrive').addEventListener('click', function () { setMode('drive'); });
+  $('modeWalk').addEventListener('click', function () { setMode('walk'); });
+  $('modeBtn').addEventListener('click', function () { setMode(S.mode === 'drive' ? 'walk' : 'drive'); });
+  $('readyBtn').addEventListener('click', startNav);
+  $('stopBtn').addEventListener('click', function () { stopNav(false); });
+  $('recenterBtn').addEventListener('click', function () {
+    if (!S.pos) return;
+    S.follow = true;
+    map.setView([S.pos.lat, S.pos.lng], Math.max(map.getZoom(), 17), { animate: true });
+  });
+  $('skipBtn').addEventListener('click', function () {
+    if (S.target >= POINTS.length - 1) { toast('นี่คือจุดสุดท้ายแล้ว', 2000); return; }
+    S.target++;
+    clearRoute();
+    renderTarget();
+    S.stepIdx = 1;
+    S.lastFetch = 0;
+    fetchRoute();
+    S.follow = true;
+    toast('ไปต่อที่ ' + POINTS[S.target].name, 2200);
+  });
+
+  /* ===================== เริ่มต้น ===================== */
+  fitAll();
+  paintPins();
+  window.addEventListener('resize', function () { if (!S.nav) fitAll(); });
+})();
+</script>
+</body>
+</html>
